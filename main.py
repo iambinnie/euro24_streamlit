@@ -36,7 +36,11 @@ def plot_shots(df, ax, pitch):
         if x['shot_outcome'] == 'Goal':
             color = 'green'
         elif x['shot_outcome'] == 'Off T':
-            color = 'orange'
+            color = 'red'
+        elif x['shot_outcome'] == 'Blocked':
+            color = 'blue'
+        elif x['shot_outcome'] == 'Saved
+            color = 'black'
         else:
             color = 'white'
 
