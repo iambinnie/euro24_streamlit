@@ -39,7 +39,7 @@ def plot_shots(df, ax, pitch):
             color = 'red'
         elif x['shot_outcome'] == 'Blocked':
             color = 'blue'
-        elif x['shot_outcome'] == 'Saved
+        elif x['shot_outcome'] == 'Saved':
             color = 'black'
         else:
             color = 'white'
