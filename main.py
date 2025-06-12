@@ -32,18 +32,25 @@ fig, ax = pitch.draw(figsize=(10, 10))
 
 def plot_shots(df, ax, pitch):
     for x in df.to_dict(orient='records'):
+        # Determine color based on shot_outcome
+        if x['shot_outcome'] == 'Goal':
+            color = 'green'
+        elif x['shot_outcome'] == 'Off T':
+            color = 'orange'
+        else:
+            color = 'white'
+
         pitch.scatter(
             x=float(x['location'][0]),
             y=float(x['location'][1]),
             ax=ax,
             s=1000 * x['shot_statsbomb_xg'],
-            color='green' if x['shot_outcome'] == 'Goal'
-           #elif color='orange' if x['shot_outcome'] != 'Off T'
-            else 'white',
+            color=color,
             edgecolors='black',
-            alpha=1 if x['type'] == 'goal' else .5,
-            zorder=2 if x['type'] == 'goal' else 1
+            alpha=1 if x['shot_outcome'] == 'Goal' else 0.5,
+            zorder=2 if x['shot_outcome'] == 'Goal' else 1
         )
+
 
 plot_shots(filtered_df, ax, pitch)
 
