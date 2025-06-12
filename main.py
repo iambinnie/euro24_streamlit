@@ -38,7 +38,7 @@ def plot_shots(df, ax, pitch):
             ax=ax,
             s=1000 * x['shot_statsbomb_xg'],
             color='green' if x['shot_outcome'] == 'Goal'
-            color='orange if x['shot_outcome'] != 'Off T'
+            color='orange' if x['shot_outcome'] != 'Off T'
             else 'white',
             edgecolors='black',
             alpha=1 if x['type'] == 'goal' else .5,
