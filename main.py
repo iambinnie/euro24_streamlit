@@ -13,6 +13,7 @@ df = pd.read_csv('data_euro24_statsbomb.csv')
 df = df[df['type'] == 'Shot'].reset_index(drop=True)
 df['location'] = df['location'].apply(json.loads)
 
+action = st.selectbox('Select an action', df['type'].sort_values().unique, index=None)
 team = st.selectbox('Select a team', df['team'].sort_values().unique(), index=None)
 player = st.selectbox('Select a player', df[df['team'] == team]['player'].sort_values().unique(), index=None)
 
