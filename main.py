@@ -16,6 +16,7 @@ df['location'] = df['location'].apply(json.loads)
 #action = st.selectbox('Select an action', df['type'].sort_values().unique, index=None)
 team = st.selectbox('Select a team', df['team'].sort_values().unique(), index=None)
 player = st.selectbox('Select a player', df[df['team'] == team]['player'].sort_values().unique(), index=None)
+period = st.segmented_control(label='Select Period of Play', options=df[df['period'].sort_values().unique, *, selection_mode="single", default=None, format_func=None, key=None, help=None, on_change=None, args=None, kwargs=None, disabled=False, label_visibility="visible")
 
 def filter_data(df, team, player):
     if team:
