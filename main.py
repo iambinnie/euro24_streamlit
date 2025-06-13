@@ -18,7 +18,7 @@ player = st.selectbox('Select a player', df[df['team'] == team]['player'].sort_v
 period = st.segmented_control(
     label='Select Period of Play', 
     #options=df['period'].sort_values().unique,
-    options=[1,2]
+    options=[1,2],
     selection_mode="multi", 
     default=[1,2], 
     on_change=None, 
