@@ -1,0 +1,15 @@
+[2025-06-28T16:10:27.249419] Directory setup check:
+  CREATED: C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data
+  CREATED: C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data\raw
+  CREATED: C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data\flattened
+  CREATED: C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data\errors
+[2025-06-28T16:10:46.625477] Directory setup check:
+  EXISTS:  C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data
+  EXISTS:  C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data\raw
+  EXISTS:  C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data\flattened
+  EXISTS:  C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data\errors
+[2025-06-28T16:41:51.987985] Directory setup check:
+  EXISTS:  C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data
+  EXISTS:  C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data\raw
+  EXISTS:  C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data\flattened
+  EXISTS:  C:\Users\x230\OneDrive\Documents\GitHub\euro24_streamlit\data\errors

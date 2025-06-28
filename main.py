@@ -1,96 +1,96 @@
-import streamlit as st
 import pandas as pd
-from mplsoccer import VerticalPitch
+import streamlit as st
 import matplotlib.pyplot as plt
+from mplsoccer import VerticalPitch
 
-# === Load Combined Event Data ===
+DATA_PATH = "data/euro24_all_events_combined.csv"
+
+# ----------------------------------------------------------------------
+# Load flattened master file (cached)
+# ----------------------------------------------------------------------
 @st.cache_data
-def load_data():
-    path = "data/euro24_all_events_combined.csv"
-    df = pd.read_csv(path, low_memory=False)
-    return df
+def load_data(path: str):
+    return pd.read_csv(path, low_memory=False)
 
-df = load_data()
+df = load_data(DATA_PATH)
 
-st.title("⚽ Euro 2024 Event Viewer")
-st.markdown("Explore StatsBomb event data by match, team, player, and event type.")
+required_cols = {"x", "y", "team", "player", "type", "period", "match_name"}
+missing = required_cols - set(df.columns)
+if missing:
+    st.error(f"Missing columns in combined CSV: {missing}")
+    st.stop()
 
-# === Sidebar Filters ===
-match = st.selectbox("Select Match", sorted(df['match_name'].dropna().unique()), index=0)
-filtered_df = df[df['match_name'] == match]
+# ----------------------------------------------------------------------
+# UI filters
+# ----------------------------------------------------------------------
+st.title("Euro 2024 – Event Explorer")
+st.caption("Select team, player, event type, and period(s).")
 
-team = st.selectbox("Select Team", sorted(filtered_df['team'].dropna().unique()), index=0)
-filtered_df = filtered_df[filtered_df['team'] == team]
+team = st.selectbox("Team", sorted(df["team"].dropna().unique()))
+players = sorted(df[df["team"] == team]["player"].dropna().unique())
+player = st.selectbox("Player", players)
 
-player = st.selectbox("Select Player", sorted(filtered_df['player'].dropna().unique()), index=0)
-filtered_df = filtered_df[filtered_df['player'] == player]
+event_types = sorted(df[df["player"] == player]["type"].dropna().unique())
+etype = st.selectbox("Event Type", event_types)
 
-etype = st.selectbox("Select Event Type", sorted(filtered_df['type'].dropna().unique()), index=0)
-filtered_df = filtered_df[filtered_df['type'] == etype]
+period_options = sorted(df["period"].dropna().unique().tolist())
+period_selected = st.multiselect("Period(s)", period_options, default=period_options)
 
-# === Display Filtered Table ===
-st.markdown("### 📋 Filtered Events")
-columns_to_show = ['minute', 'second', 'type', 'player', 'team']
-for optional in ['location', 'x', 'y', 'end_x', 'end_y', 'pass.outcome.name', 'outcome.name', 'shot.statsbomb_xg']:
-    if optional in filtered_df.columns:
-        columns_to_show.append(optional)
+# ----------------------------------------------------------------------
+# Apply filters
+# ----------------------------------------------------------------------
+mask = (
+    (df["team"] == team)
+    & (df["player"] == player)
+    & (df["type"] == etype)
+    & (df["period"].isin(period_selected))
+)
+df_plot = df[mask].copy()
 
-st.dataframe(filtered_df[columns_to_show].head(20))
+if df_plot.empty:
+    st.warning("No events match your filters.")
+    st.stop()
 
-st.write("Checking coordinates:")
-st.write(filtered_df[['x', 'y', 'end_x', 'end_y']].dropna().head())
+# ----------------------------------------------------------------------
+# Plot setup
+# ----------------------------------------------------------------------
+pitch = VerticalPitch(pitch_type="statsbomb", half=True)
+fig, ax = pitch.draw(figsize=(9, 9))
 
-# === Timeline: Event Frequency Over Time ===
-st.markdown("### ⏱ Event Timeline Chart")
-if not filtered_df.empty:
-    minute_counts = filtered_df['minute'].value_counts().sort_index()
-    fig_time, ax_time = plt.subplots(figsize=(8, 2.5))
-    ax_time.bar(minute_counts.index, minute_counts.values, color='skyblue')
-    ax_time.set_xlabel("Minute")
-    ax_time.set_ylabel("Number of Events")
-    ax_time.set_title(f"Event Frequency by Minute: {etype}")
-    st.pyplot(fig_time)
+has_end_coords = {"end_x", "end_y"}.issubset(df_plot.columns) and not df_plot[["end_x", "end_y"]].isna().all().all()
+
+if has_end_coords:
+    # --- Generic arrow logic for any event with start+end ----------------
+    for _, row in df_plot.iterrows():
+        if pd.notna(row["x"]) and pd.notna(row["y"]) and pd.notna(row["end_x"]) and pd.notna(row["end_y"]):
+
+            # Colour rules
+            if row["type"] in ("Pass", "Carry"):
+                incomplete = ("pass.outcome.name" in row and pd.notna(row["pass.outcome.name"]))
+                color = "red" if incomplete else "green"
+            else:
+                color = "blue"   # generic arrow colour for other events
+
+
+            pitch.arrows(
+                row["x"], row["y"], row["end_x"], row["end_y"],
+                ax=ax, width=1.5, headwidth=6, color=color, alpha=0.8, zorder=2
+            )
+
+    st.caption("Green = completed • Red = incomplete (passes/carries) • Blue = other arrows")
+
 else:
-    st.warning("No events to show for this selection.")
+    # Fallback to dots if no end locations
+    pitch.scatter(
+        df_plot["x"], df_plot["y"],
+        s=80, color="red", edgecolors="black", alpha=0.7, zorder=2, ax=ax
+    )
+    st.caption("Red dots show event locations (no end coordinates provided)")
 
-# === Pitch Plot ===
-st.markdown("### 🗺️ Event Location Plot")
+st.pyplot(fig)
 
-if {'x', 'y'}.issubset(filtered_df.columns) and not filtered_df[['x', 'y']].isna().all().all():
-    pitch = VerticalPitch(pitch_type='statsbomb')
-    fig, ax = pitch.draw(figsize=(9, 6))
-
-    if etype in ['Pass', 'Carry'] and {'end_x', 'end_y'}.issubset(filtered_df.columns):
-        for _, row in filtered_df.iterrows():
-            if pd.notna(row['x']) and pd.notna(row['y']) and pd.notna(row['end_x']) and pd.notna(row['end_y']):
-                if 'pass.outcome.name' in row and pd.notna(row['pass.outcome.name']):
-                    color = 'red'  # incomplete
-                else:
-                    color = 'green'  # completed
-
-                pitch.arrows(
-                    row['x'], row['y'], row['end_x'], row['end_y'],
-                    ax=ax, width=1.5, headwidth=6,
-                    color=color, alpha=0.8, zorder=2
-                )
-        st.caption("🟩 Green = completed | 🟥 Red = incomplete passes/carries")
-    else:
-        # Just show dots
-        pitch.scatter(
-            x=filtered_df['x'],
-            y=filtered_df['y'],
-            ax=ax,
-            s=100,
-            color='red',
-            edgecolors='black'
-        )
-        st.caption("🔴 Showing event locations as points (no end location available).")
-
-    # Optional player names
-    for _, row in filtered_df.head(10).iterrows():
-        if pd.notna(row['x']) and pd.notna(row['y']):
-            ax.text(row['x'], row['y'], row['player'], fontsize=7, ha='center', color='white')
-
-    st.pyplot(fig)
-else:
-    st.warning("No valid location data available for plotting.")
+# ----------------------------------------------------------------------
+# Optional debug/preview table
+# ----------------------------------------------------------------------
+with st.expander("Show first 10 events"):
+    st.dataframe(df_plot.head(10))

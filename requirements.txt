@@ -2,3 +2,4 @@ pandas
 mplsoccer
 statsbombpy
 matplotlib
+pytest
