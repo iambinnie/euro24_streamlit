@@ -1,14 +1,12 @@
 """
-Flatten all raw Euro-24 StatsBomb JSON files into per-match CSV files
-and produce one combined CSV suitable for analysis.
+Flatten raw StatsBomb Euro‑24 JSON event files into per‑match CSVs,
+inject match metadata, validate required coordinates, and combine into
+a master CSV if all pass validation.
 
-Assumes:
-    - Raw JSONs are in RAW_DIR
-    - Match metadata is available at MATCH_META_PATH
-Outputs:
-    - Per-match CSVs in FLATTENED_DIR
-    - Combined file: BASE_DATA_DIR/euro24_all_events_combined.csv
-    - Error log: ERRORS_DIR/flatten_errors.txt
+- Reads raw files from RAW_DIR
+- Writes per-match CSVs to FLATTENED_DIR
+- Writes combined CSV to BASE_DATA_DIR/euro24_all_events_combined.csv
+- Logs validation results to ERRORS_DIR/flatten_report.txt
 """
 
 import os
@@ -17,7 +15,6 @@ import json
 from datetime import datetime
 
 import pandas as pd
-from pandas import json_normalize
 
 from config.constants import (
     RAW_DIR,
@@ -27,112 +24,114 @@ from config.constants import (
     ERRORS_DIR,
 )
 
-COMBINED_CSV_PATH = os.path.join(BASE_DATA_DIR, "euro24_all_events_combined.csv")
-ERROR_LOG_PATH = os.path.join(ERRORS_DIR, "flatten_errors.txt")
+COMBINED_CSV = os.path.join(BASE_DATA_DIR, "euro24_all_events_combined.csv")
+REPORT_PATH = os.path.join(ERRORS_DIR, "flatten_report.txt")
 
 
-def extract_coord(val, index):
-    try:
-        if isinstance(val, list) and len(val) > index:
-            return val[index]
-    except Exception:
-        pass
-    return None
+def extract_coord(val, idx):
+    """Safely return coordinate from list or None."""
+    return val[idx] if isinstance(val, list) and len(val) > idx else None
 
 
-def flatten_match(json_path: str, csv_path: str, matches_df: pd.DataFrame):
-    """Flatten a single match's raw JSON data into a flat CSV with metadata."""
+def flatten_single(json_path, csv_path, meta_df, report_lines):
     try:
         with open(json_path, "r", encoding="utf-8") as f:
             records = [json.loads(line) for line in f]
 
-        events = json_normalize(records, sep=".")
+        df = pd.json_normalize(records, sep=".")
 
-        # === Coordinates ===
-        events["x"] = events["location"].apply(lambda loc: extract_coord(loc, 0))
-        events["y"] = events["location"].apply(lambda loc: extract_coord(loc, 1))
+        # Basic coords
+        df["x"] = df["location"].apply(lambda loc: extract_coord(loc, 0))
+        df["y"] = df["location"].apply(lambda loc: extract_coord(loc, 1))
 
-        if "pass.end_location" in events.columns:
-            events["end_x"] = events["pass.end_location"].apply(lambda loc: extract_coord(loc, 0))
-            events["end_y"] = events["pass.end_location"].apply(lambda loc: extract_coord(loc, 1))
-        else:
-            events["end_x"] = None
-            events["end_y"] = None
+        # Use flat keys instead of nested pass.end_location
+        df["end_x"] = df["pass_end_location"].apply(lambda loc: extract_coord(loc, 0)) if "pass_end_location" in df else None
+        df["end_y"] = df["pass_end_location"].apply(lambda loc: extract_coord(loc, 1)) if "pass_end_location" in df else None
 
-        if "carry.end_location" in events.columns:
-            carry_x = events["carry.end_location"].apply(lambda loc: extract_coord(loc, 0))
-            carry_y = events["carry.end_location"].apply(lambda loc: extract_coord(loc, 1))
-            events["end_x"] = events["end_x"].combine_first(carry_x)
-            events["end_y"] = events["end_y"].combine_first(carry_y)
+        if "carry_end_location" in df:
+            carry_x = df["carry_end_location"].apply(lambda loc: extract_coord(loc, 0))
+            carry_y = df["carry_end_location"].apply(lambda loc: extract_coord(loc, 1))
+            df["end_x"] = df["end_x"].combine_first(carry_x)
+            df["end_y"] = df["end_y"].combine_first(carry_y)
 
-        if "shot.end_location" in events.columns:
-            events["shot_end_x"] = events["shot.end_location"].apply(lambda loc: extract_coord(loc, 0))
-            events["shot_end_y"] = events["shot.end_location"].apply(lambda loc: extract_coord(loc, 1))
+        if "shot.end_location" in df:
+            df["shot_end_x"] = df["shot.end_location"].apply(lambda loc: extract_coord(loc, 0))
+            df["shot_end_y"] = df["shot.end_location"].apply(lambda loc: extract_coord(loc, 1))
 
-        # === Inject Match Metadata ===
+        # Inject metadata
         match_id = int(os.path.basename(json_path).split("_")[0])
-        match_meta = matches_df[matches_df["match_id"] == match_id]
+        meta_row = meta_df.loc[meta_df["match_id"] == match_id]
 
-        if match_meta.empty:
-            raise ValueError(f"Match ID {match_id} not found in metadata.")
+        if meta_row.empty:
+            report_lines.append(f"[{match_id}]  ERROR  Metadata not found\n")
+            return False
 
-        home = match_meta["home_team"].values[0]
-        away = match_meta["away_team"].values[0]
+        home = meta_row["home_team"].values[0]
+        away = meta_row["away_team"].values[0]
 
-        events["match_id"] = match_id
-        events["match_name"] = f"{home} vs {away}"
-        events["home_team"] = home
-        events["away_team"] = away
+        df["match_id"] = match_id
+        df["match_name"] = f"{home} vs {away}"
+        df["home_team"] = home
+        df["away_team"] = away
 
-        # === Validate and Save ===
-        required = ["x", "y", "end_x", "end_y"]
-        missing = [col for col in required if col not in events.columns]
-        if missing:
-            raise ValueError(f"Missing columns: {missing}")
+        # Validate: all Pass/Carry must have end_x/end_y
+        pass_carry = df[df["type"].isin(["Pass", "Carry"])]
+        missing = pass_carry[pass_carry[["end_x", "end_y"]].isna().any(axis=1)]
 
-        events.to_csv(csv_path, index=False)
+        if not missing.empty:
+            report_lines.append(f"[{match_id}]  FAIL  {len(missing)} Pass/Carry rows missing end coords\n")
+            return False
+
+        df.to_csv(csv_path, index=False)
+        report_lines.append(f"[{match_id}]  OK    Flattened {len(df)} rows\n")
         return True
 
     except Exception as e:
-        os.makedirs(ERRORS_DIR, exist_ok=True)
-        with open(ERROR_LOG_PATH, "a", encoding="utf-8") as log:
-            log.write(f"[{datetime.now().isoformat()}] ERROR in {json_path}: {str(e)}\n")
-        print(f"ERROR in {json_path}: {e}")
+        report_lines.append(f"[ERROR]  {os.path.basename(json_path)}  ::  {e}\n")
         return False
 
 
 def main():
-    print("Starting flattening...")
     os.makedirs(FLATTENED_DIR, exist_ok=True)
+    os.makedirs(ERRORS_DIR, exist_ok=True)
 
-    matches_df = pd.read_csv(MATCH_META_PATH)
-    raw_files = glob.glob(os.path.join(RAW_DIR, "*.json"))
+    meta_df = pd.read_csv(MATCH_META_PATH)
+    raw_files = sorted(glob.glob(os.path.join(RAW_DIR, "*.json")))
 
-    flattened = 0
-    for json_path in raw_files:
-        match_id = os.path.basename(json_path).split("_")[0]
-        csv_name = os.path.basename(json_path).replace(".json", ".csv")
-        csv_path = os.path.join(FLATTENED_DIR, csv_name)
+    report = [f"Flatten run {datetime.now().isoformat()}\n", "-" * 50 + "\n"]
+    ok_count = fail_count = 0
+
+    for raw in raw_files:
+        match_id = os.path.basename(raw).split("_")[0]
+        csv_path = os.path.join(FLATTENED_DIR, f"{match_id}_events.csv")
 
         if os.path.exists(csv_path):
-            print(f"Exists: {csv_name}")
+            report.append(f"[{match_id}]  SKIP  already exists\n")
+            ok_count += 1
             continue
 
-        ok = flatten_match(json_path, csv_path, matches_df)
-        if ok:
-            flattened += 1
+        success = flatten_single(raw, csv_path, meta_df, report)
+        if success:
+            ok_count += 1
+        else:
+            fail_count += 1
 
-    print(f"Flattened {flattened} new matches.")
+    # Write flatten report
+    report.append("-" * 50 + "\n")
+    report.append(f"Success: {ok_count}   Failures: {fail_count}\n")
 
-    # Combine all CSVs
-    csv_files = glob.glob(os.path.join(FLATTENED_DIR, "*.csv"))
-    if not csv_files:
-        print("No flattened files found.")
+    with open(REPORT_PATH, "a", encoding="utf-8") as f:
+        f.writelines(report)
+
+    if fail_count:
+        print("Flatten completed with failures — see report for details.")
         return
 
-    combined_df = pd.concat([pd.read_csv(f) for f in csv_files], ignore_index=True)
-    combined_df.to_csv(COMBINED_CSV_PATH, index=False)
-    print(f"Combined CSV written to: {COMBINED_CSV_PATH}")
+    # Combine all valid CSVs
+    all_csvs = glob.glob(os.path.join(FLATTENED_DIR, "*.csv"))
+    combined_df = pd.concat([pd.read_csv(p) for p in all_csvs], ignore_index=True)
+    combined_df.to_csv(COMBINED_CSV, index=False)
+    print(f"Combined CSV written to: {COMBINED_CSV}")
 
 
 if __name__ == "__main__":

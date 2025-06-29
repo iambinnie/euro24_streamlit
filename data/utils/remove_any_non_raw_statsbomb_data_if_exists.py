@@ -2,6 +2,8 @@ import os
 import shutil
 
 from config.constants import FLATTENED_DIR, ERRORS_DIR
+from config.constants import BASE_DATA_DIR
+
 
 
 def remove_contents(folder):
@@ -28,3 +30,11 @@ def remove_contents(folder):
 # === Run cleanup ===
 remove_contents(FLATTENED_DIR)
 remove_contents(ERRORS_DIR)
+
+# combined_path = os.path.join(BASE_DATA_DIR, "euro24_all_events_combined.csv")
+# if os.path.exists(combined_path):
+#     os.remove(combined_path)
+#     print(f"Removed combined CSV: {combined_path}")
+
+
+
